@@ -9,7 +9,7 @@ export default async function Home() {
   
   return (
     <>
-      One more small change
+      lets see if i made the proper changes to jenkins
       <Landing projects={projects}/>
       
 
