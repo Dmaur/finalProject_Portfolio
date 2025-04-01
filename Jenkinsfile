@@ -9,6 +9,7 @@ pipeline {
         MONGODB_URI = credentials('MONGODB_URI')
         MONGO_DB_NAME = 'dbProjects'
         MONGO_COLLECTION_PROJECTS = 'projects'
+        VERCEL_TOKEN = credentials('vercel-token')
     }
     
     stages {
@@ -31,159 +32,161 @@ pipeline {
             }
         }
         
-        stage('Debug MongoDB Connection') {
+        stage('Prepare Next.js Environment') {
             steps {
                 sh '''
-                    echo "Creating MongoDB debug file..."
+                    echo "Setting up Next.js environment files..."
                     
-                    # Create a direct test script for MongoDB connection
-                    cat > mongodb-test.js << EOF
-const { MongoClient } = require('mongodb');
-
-// Log how environment variables are seen
-console.log('Environment variable access:');
-console.log('process.env.MONGODB_URI defined:', process.env.MONGODB_URI !== undefined);
-console.log('process.env.MONGODB_URI length:', process.env.MONGODB_URI ? process.env.MONGODB_URI.length : 0);
-console.log('process.env.MONGODB_URI starts with:', process.env.MONGODB_URI ? process.env.MONGODB_URI.substring(0, 12) : 'undefined');
-
-// Test connection with hard-coded string as fallback
-async function testConnection() {
-  try {
-    // Try with process.env first
-    const uri = process.env.MONGODB_URI || 'mongodb+srv://derrickmaurais1:JXQ67MN8VRi10Hvu@portfoliositedb.hweqv.mongodb.net/?retryWrites=true&w=majority&appName=portfolioSiteDB';
-    console.log('Using URI starting with:', uri.substring(0, 12));
-    
-    const client = new MongoClient(uri);
-    console.log('Created MongoDB client');
-    await client.connect();
-    console.log('SUCCESSFULLY connected to MongoDB!');
-    await client.close();
-    return true;
-  } catch (error) {
-    console.error('MongoDB connection test failed:', error.message);
-    return false;
+                    # Create .env.local file - Next.js prefers this for local environment variables
+                    echo "MONGODB_URI=$MONGODB_URI" > .env.local
+                    echo "MONGO_DB_NAME=$MONGO_DB_NAME" >> .env.local
+                    echo "MONGO_COLLECTION_PROJECTS=$MONGO_COLLECTION_PROJECTS" >> .env.local
+                    
+                    # Also create regular .env file for compatibility
+                    cp .env.local .env
+                    
+                    # Create next.config.js with environment variables explicitly set
+                    cat > next.config.mjs << EOF
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  env: {
+    MONGODB_URI: '${MONGODB_URI}',
+    MONGO_DB_NAME: '${MONGO_DB_NAME}',
+    MONGO_COLLECTION_PROJECTS: '${MONGO_COLLECTION_PROJECTS}'
   }
-}
+};
 
-// Execute the test
-testConnection()
-  .then(success => {
-    console.log('Test result:', success ? 'SUCCESS' : 'FAILURE');
-    process.exit(success ? 0 : 1);
-  })
-  .catch(err => {
-    console.error('Unhandled error:', err);
-    process.exit(1);
-  });
+export default nextConfig;
 EOF
                     
-                    # Create different versions of .env file
-                    echo "Creating different environment file formats..."
-                    
-                    # Version 1: Standard format
-                    echo "MONGODB_URI=$MONGODB_URI" > .env
-                    echo "MONGO_DB_NAME=$MONGO_DB_NAME" >> .env
-                    echo "MONGO_COLLECTION_PROJECTS=$MONGO_COLLECTION_PROJECTS" >> .env
-                    
-                    # Version 2: With quotes
-                    echo "MONGODB_URI='$MONGODB_URI'" > .env.quoted
-                    echo "MONGO_DB_NAME='$MONGO_DB_NAME'" >> .env.quoted
-                    echo "MONGO_COLLECTION_PROJECTS='$MONGO_COLLECTION_PROJECTS'" >> .env.quoted
-                    
-                    # Version 3: Double quotes
-                    echo "MONGODB_URI=\\"$MONGODB_URI\\"" > .env.dquoted
-                    echo "MONGO_DB_NAME=\\"$MONGO_DB_NAME\\"" >> .env.dquoted
-                    echo "MONGO_COLLECTION_PROJECTS=\\"$MONGO_COLLECTION_PROJECTS\\"" >> .env.dquoted
-                    
-                    echo "Running MongoDB connection test with direct environment variable..."
-                    MONGODB_URI="$MONGODB_URI" node mongodb-test.js
-                    
-                    echo "Testing with Next.js environment loading..."
-                    # Copy your db.js file or any file that connects to MongoDB to check how it accesses the environment
-                    find . -type f -name "*.js" -o -name "*.ts" | xargs grep -l "mongodb" | xargs cat || echo "No MongoDB files found"
+                    echo "Environment files prepared"
                 '''
             }
         }
         
-        stage('Test Different Build Approaches') {
+        stage('Create Database Utility') {
             steps {
                 sh '''
-                    echo "Testing different build approaches..."
+                    echo "Creating database utility file..."
                     
-                    # Approach 1: Direct environment variable
-                    echo "Approach 1: Direct environment variable"
-                    MONGODB_URI="$MONGODB_URI" MONGO_DB_NAME="$MONGO_DB_NAME" MONGO_COLLECTION_PROJECTS="$MONGO_COLLECTION_PROJECTS" node -e 'console.log("MongoDB URI from Node:", process.env.MONGODB_URI ? "defined" : "undefined")'
+                    # Create directory structure if needed
+                    mkdir -p lib
                     
-                    # Approach 2: Export from .env
-                    echo "Approach 2: Export from .env"
-                    export $(cat .env | xargs) && node -e 'console.log("MongoDB URI from Node after export:", process.env.MONGODB_URI ? "defined" : "undefined")'
-                    
-                    # Approach 3: Use dotenv package
-                    echo "Approach 3: Use dotenv package"
-                    npm install dotenv --save
-                    cat > test-dotenv.js << EOF
-require('dotenv').config();
-console.log('MongoDB URI with dotenv:', process.env.MONGODB_URI ? "defined" : "undefined");
-if (process.env.MONGODB_URI) {
-  console.log('First 12 chars:', process.env.MONGODB_URI.substring(0, 12));
-}
-EOF
-                    node test-dotenv.js
-                    
-                    # Check if your code is using dotenv
-                    grep -r "require.*dotenv" . || echo "dotenv not found in code"
-                '''
-            }
-        }
-        
-        stage('Create Next.js Fix') {
-            steps {
-                sh '''
-                    echo "Creating potential Next.js fix..."
-                    
-                    # Create a simple db.js file that ensures the MongoDB connection works
+                    # Create a db.js utility file for MongoDB connections
                     cat > lib/db.js << EOF
 import { MongoClient } from 'mongodb';
 
-// Get MongoDB connection string from environment or use backup
-const uri = process.env.MONGODB_URI || 'mongodb+srv://derrickmaurais1:JXQ67MN8VRi10Hvu@portfoliositedb.hweqv.mongodb.net/?retryWrites=true&w=majority&appName=portfolioSiteDB';
+// Get MongoDB connection string from Next.js config or environment
+const uri = process.env.MONGODB_URI;
 const dbName = process.env.MONGO_DB_NAME || 'dbProjects';
 
-// Log connection attempt for debugging
-console.log('MongoDB connection attempt with URI starting with:', uri.substring(0, 12));
+// For debugging
+console.log('MongoDB connection environment check:');
+console.log('MONGODB_URI defined:', !!process.env.MONGODB_URI);
+console.log('MONGO_DB_NAME:', process.env.MONGO_DB_NAME);
 
-// Create cached connection
+// Validate connection string
+if (!uri) {
+  throw new Error('Please define MONGODB_URI environment variable');
+}
+
+// Connection caching
 let cachedClient = null;
 let cachedDb = null;
 
 export async function connectToDatabase() {
-  // If the connection is already established, return the cached connection
+  // Return cached connection if available
   if (cachedClient && cachedDb) {
     return { client: cachedClient, db: cachedDb };
   }
 
-  const client = new MongoClient(uri);
-  await client.connect();
-  const db = client.db(dbName);
+  try {
+    const client = new MongoClient(uri);
+    await client.connect();
+    const db = client.db(dbName);
 
-  cachedClient = client;
-  cachedDb = db;
+    // Cache the connection
+    cachedClient = client;
+    cachedDb = db;
 
-  return { client, db };
+    return { client, db };
+  } catch (error) {
+    console.error('MongoDB connection error:', error);
+    throw error;
+  }
+}
+
+// Example function to get projects
+export async function getProjects() {
+  const { db } = await connectToDatabase();
+  return db.collection('projects').find({}).toArray();
 }
 EOF
                     
-                    mkdir -p lib || true
+                    echo "Database utility file created"
+                '''
+            }
+        }
+        
+        stage('Build') {
+            steps {
+                sh '''
+                    echo "Starting Next.js build process..."
                     
-                    # Try building with our fixes
-                    echo "Attempting build with fixes..."
-                    MONGODB_URI="$MONGODB_URI" MONGO_DB_NAME="$MONGO_DB_NAME" MONGO_COLLECTION_PROJECTS="$MONGO_COLLECTION_PROJECTS" npm run build || echo "Build still failing but continuing pipeline for debugging"
+                    # Build with environment variables explicitly set
+                    MONGODB_URI="$MONGODB_URI" \
+                    MONGO_DB_NAME="$MONGO_DB_NAME" \
+                    MONGO_COLLECTION_PROJECTS="$MONGO_COLLECTION_PROJECTS" \
+                    NODE_OPTIONS="--max-old-space-size=4096" \
+                    npm run build
+                '''
+            }
+        }
+        
+        stage('Deploy to Vercel') {
+            when {
+                branch 'main'
+            }
+            steps {
+                sh '''
+                    echo "Setting up Vercel deployment..."
+                    
+                    # Install Vercel CLI
+                    npm install vercel
+                    export PATH="$PATH:$(pwd)/node_modules/.bin"
+                    
+                    # Create Vercel config
+                    cat > vercel.json << EOF
+                    {
+                        "version": 2,
+                        "builds": [
+                            {
+                                "src": "package.json",
+                                "use": "@vercel/next"
+                            }
+                        ],
+                        "env": {
+                            "MONGODB_URI": "${MONGODB_URI}",
+                            "MONGO_DB_NAME": "${MONGO_DB_NAME}",
+                            "MONGO_COLLECTION_PROJECTS": "${MONGO_COLLECTION_PROJECTS}"
+                        }
+                    }
+                    EOF
+                    
+                    # Deploy to Vercel
+                    ./node_modules/.bin/vercel --token ${VERCEL_TOKEN} --prod --confirm || echo "Vercel deployment failed but continuing pipeline"
                 '''
             }
         }
     }
     
     post {
+        success {
+            echo 'Pipeline completed successfully!'
+        }
+        failure {
+            echo 'Pipeline failed. Please check the logs for more information.'
+        }
         always {
             cleanWs()
         }
