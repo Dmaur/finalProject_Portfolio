@@ -7,10 +7,10 @@ pipeline {
     
     environment {
         // Environment variables
-        MONGODB_URI = credentials('MONGO_URL') // This will be stored in Jenkins credentials
+        MONGODB_URI = credentials('MONGODB_URI')
         MONGO_DB_NAME = 'dbProjects'
         MONGO_COLLECTION_PROJECTS = 'projects'
-        VERCEL_TOKEN = credentials('vercel-token') // This will be stored in Jenkins credentials
+        VERCEL_TOKEN = credentials('vercel-token')
     }
     
     stages {
@@ -43,17 +43,76 @@ pipeline {
             }
         }
         
+        stage('Verify Env') {
+            steps {
+                sh '''
+                    echo "Checking environment variables..."
+                    
+                    if [ -z "$MONGODB_URI" ]; then
+                        echo "ERROR: MONGODB_URI is empty!"
+                    else
+                        echo "MONGODB_URI exists and is not empty"
+                        echo "First 12 chars: $(echo $MONGODB_URI | cut -c1-12)"
+                        echo "Length: $(echo $MONGODB_URI | wc -c) characters"
+                    fi
+                    
+                    echo "MONGO_DB_NAME=$MONGO_DB_NAME"
+                    echo "MONGO_COLLECTION_PROJECTS=$MONGO_COLLECTION_PROJECTS"
+                    
+                    # Create a test file to check how environment variables are being set
+                    echo "MONGODB_URI=$MONGODB_URI" > test-env.txt
+                    echo "Content of test-env.txt file:"
+                    cat test-env.txt
+                '''
+            }
+        }
+        
         stage('Build') {
             steps {
                 // Create .env file with environment variables for build
                 sh '''
-                    echo "MONGODB_URI=${MONGODB_URI}" > .env
-                    echo "MONGO_DB_NAME=${MONGO_DB_NAME}" >> .env
-                    echo "MONGO_COLLECTION_PROJECTS=${MONGO_COLLECTION_PROJECTS}" >> .env
+                    echo "Creating .env file..."
+                    echo "MONGODB_URI=\"$MONGODB_URI\"" > .env
+                    echo "MONGO_DB_NAME=\"$MONGO_DB_NAME\"" >> .env
+                    echo "MONGO_COLLECTION_PROJECTS=\"$MONGO_COLLECTION_PROJECTS\"" >> .env
+                    
+                    # Check .env file
+                    echo "Content of .env file (masking sensitive info):"
+                    cat .env | sed 's/MONGODB_URI=.*/MONGODB_URI=****/'
                 '''
                 
-                // Build Next.js application
-                sh 'npm run build'
+                // Create a debug file in the app to check MongoDB connection
+                sh '''
+                    # Create a temporary debug file
+                    cat > debug-mongo.js << EOF
+console.log('Debugging MongoDB connection...');
+const { MongoClient } = require('mongodb');
+
+// This should log the actual connection string for debugging
+console.log('Connection string starts with:', process.env.MONGODB_URI ? process.env.MONGODB_URI.substring(0, 12) : 'undefined');
+console.log('Connection string length:', process.env.MONGODB_URI ? process.env.MONGODB_URI.length : 0);
+
+// Check for quotes or other issues
+console.log('Raw value:', JSON.stringify(process.env.MONGODB_URI));
+EOF
+
+                    # Run the debug file
+                    echo "Running MongoDB connection debug script..."
+                    node debug-mongo.js
+                '''
+                
+                // Use env file for Next.js build with explicit loading
+                sh '''
+                    # Ensure Next.js loads the .env file
+                    export $(cat .env | xargs)
+                    
+                    # Try building with different environment passing methods
+                    NODE_OPTIONS="--max-old-space-size=4096" \
+                    MONGODB_URI="$MONGODB_URI" \
+                    MONGO_DB_NAME="$MONGO_DB_NAME" \
+                    MONGO_COLLECTION_PROJECTS="$MONGO_COLLECTION_PROJECTS" \
+                    npm run build
+                '''
             }
         }
         
