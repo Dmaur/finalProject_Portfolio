@@ -7,7 +7,7 @@ pipeline {
     
     environment {
         // Environment variables
-        MONGODB_URI = credentials('mongodb-atlas-uri') // This will be stored in Jenkins credentials
+        MONGODB_URL = credentials('mongodb-atlas-uri') // This will be stored in Jenkins credentials
         MONGO_DB_NAME = 'dbProjects'
         MONGO_COLLECTION_PROJECTS = 'projects'
         VERCEL_TOKEN = credentials('vercel-token') // This will be stored in Jenkins credentials
