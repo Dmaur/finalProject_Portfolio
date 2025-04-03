@@ -9,7 +9,7 @@ export default async function Home() {
   
   return (
     <>
-     i think i finally hae it!
+    slowly getting it i think
       <Landing projects={projects}/>
       
 
