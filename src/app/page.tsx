@@ -9,7 +9,7 @@ export default async function Home() {
   
   return (
     <>
-    small branch change
+    change to make inital status better
       <Landing projects={projects}/>
       
 
