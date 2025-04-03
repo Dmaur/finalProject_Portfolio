@@ -39,7 +39,7 @@ pipeline {
             steps {
                 // Create a simple .env file with direct MongoDB credentials
                 sh '''
-                    echo "MONGODB_URI=mongodb+srv://derrickmaurais1:JXQ67MN8VRi10Hvu@portfoliositedb.hweqv.mongodb.net/?retryWrites=true&w=majority&appName=portfolioSiteDB" > .env
+                    echo "MONGO_URL=mongodb+srv://derrickmaurais1:JXQ67MN8VRi10Hvu@portfoliositedb.hweqv.mongodb.net/?retryWrites=true&w=majority&appName=portfolioSiteDB" > .env
                     echo "MONGO_DB_NAME=dbProjects" >> .env
                     echo "MONGO_COLLECTION_PROJECTS=projects" >> .env
                     
