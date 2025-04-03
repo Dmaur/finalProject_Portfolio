@@ -11,6 +11,13 @@ pipeline {
     }
     
     stages {
+
+         stage('Checkout') {
+            steps {
+                // Get latest code
+                checkout scm
+            }
+        }
         stage('Notify Start') {
             steps {
                 // Set pending status at the beginning
@@ -34,12 +41,7 @@ pipeline {
             }
         }
         
-        stage('Checkout') {
-            steps {
-                // Get latest code
-                checkout scm
-            }
-        }
+       
         
         stage('Install Dependencies') {
             steps {
