@@ -7,9 +7,25 @@ pipeline {
     
     environment {
         GH_TOKEN = credentials('github-status-token')
+        GITHUB_REPO = "Dmaur/finalProject_Portfolio"
     }
     
     stages {
+        stage('Notify Start') {
+            steps {
+                // Set pending status at the beginning
+                sh """
+                    curl -s -X POST \
+                    -H "Authorization: token ${GH_TOKEN}" \
+                    -H "Accept: application/vnd.github.v3+json" \
+                    https://api.github.com/repos/${GITHUB_REPO}/statuses/${GIT_COMMIT} \
+                    -d '{"state":"pending","context":"Jenkins","description":"Build started","target_url":"${BUILD_URL}"}'
+                """
+                
+                echo "GitHub notified: Build started"
+            }
+        }
+        
         stage('Setup') {
             steps {
                 // Check node and npm versions
@@ -66,31 +82,33 @@ pipeline {
                 sh 'echo "All quality checks have passed! Vercel can safely deploy."'
             }
         }
-        
-        stage('Report Status') {
-            steps {
-                sh '''
-                    # Report status to GitHub using the API
-                    curl -s -X POST \
-                      -H "Authorization: token ${GH_TOKEN}" \
-                      -H "Accept: application/vnd.github.v3+json" \
-                      https://api.github.com/repos/Dmaur/finalProject_Portfolio/statuses/${GIT_COMMIT} \
-                      -d '{"state":"success","context":"Jenkins","description":"Build passed"}'
-                '''
-            }
-        }
     }
     
     post {
-        failure {
-            sh '''
-                # Report failure status
+        success {
+            // Update GitHub status to success
+            sh """
                 curl -s -X POST \
-                  -H "Authorization: token ${GH_TOKEN}" \
-                  -H "Accept: application/vnd.github.v3+json" \
-                  https://api.github.com/repos/Dmaur/finalProject_Portfolio/statuses/${GIT_COMMIT} \
-                  -d '{"state":"failure","context":"Jenkins","description":"Build failed"}'
-            '''
+                -H "Authorization: token ${GH_TOKEN}" \
+                -H "Accept: application/vnd.github.v3+json" \
+                https://api.github.com/repos/${GITHUB_REPO}/statuses/${GIT_COMMIT} \
+                -d '{"state":"success","context":"Jenkins","description":"Build succeeded","target_url":"${BUILD_URL}"}'
+            """
+            
+            echo "GitHub notified: Build succeeded"
+        }
+        
+        failure {
+            // Update GitHub status to failure
+            sh """
+                curl -s -X POST \
+                -H "Authorization: token ${GH_TOKEN}" \
+                -H "Accept: application/vnd.github.v3+json" \
+                https://api.github.com/repos/${GITHUB_REPO}/statuses/${GIT_COMMIT} \
+                -d '{"state":"failure","context":"Jenkins","description":"Build failed","target_url":"${BUILD_URL}"}'
+            """
+            
+            echo "GitHub notified: Build failed"
         }
         
         always {
