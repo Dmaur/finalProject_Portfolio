@@ -9,7 +9,7 @@ export default async function Home() {
   
   return (
     <>
-    slowly getting it i think
+    slowly getting it i think, hopefully the rule is correct
       <Landing projects={projects}/>
       
 
