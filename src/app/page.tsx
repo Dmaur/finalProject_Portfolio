@@ -9,7 +9,7 @@ export default async function Home() {
   
   return (
     <>
-      for the love of god work
+      changing the approach
       <Landing projects={projects}/>
       
 
