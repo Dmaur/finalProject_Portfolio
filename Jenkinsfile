@@ -5,6 +5,10 @@ pipeline {
         nodejs 'NodeJS'
     }
     
+    environment {
+        GH_TOKEN = credentials('github-status-token')
+    }
+    
     stages {
         stage('Setup') {
             steps {
@@ -62,17 +66,34 @@ pipeline {
                 sh 'echo "All quality checks have passed! Vercel can safely deploy."'
             }
         }
+        
+        stage('Report Status') {
+            steps {
+                sh '''
+                    # Report status to GitHub using the API
+                    curl -s -X POST \
+                      -H "Authorization: token ${GH_TOKEN}" \
+                      -H "Accept: application/vnd.github.v3+json" \
+                      https://api.github.com/repos/Dmaur/finalProject_Portfolio/statuses/${GIT_COMMIT} \
+                      -d '{"state":"success","context":"Jenkins","description":"Build passed"}'
+                '''
+            }
+        }
     }
     
     post {
-        success {
-            echo 'Quality gate passed! Vercel can safely deploy the application.'
-        }
         failure {
-            echo 'Quality gate failed. Fix the issues before deploying.'
+            sh '''
+                # Report failure status
+                curl -s -X POST \
+                  -H "Authorization: token ${GH_TOKEN}" \
+                  -H "Accept: application/vnd.github.v3+json" \
+                  https://api.github.com/repos/Dmaur/finalProject_Portfolio/statuses/${GIT_COMMIT} \
+                  -d '{"state":"failure","context":"Jenkins","description":"Build failed"}'
+            '''
         }
+        
         always {
-            // Clean up workspace
             cleanWs()
         }
     }
