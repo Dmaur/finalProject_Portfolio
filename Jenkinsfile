@@ -8,19 +8,21 @@ pipeline {
     environment {
         GH_TOKEN = credentials('github-status-token')
         GITHUB_REPO = "Dmaur/finalProject_Portfolio"
+        // Use a unique context name
+        CONTEXT_NAME = "jenkins-portfolio-check"
     }
     
     stages {
         stage('Notify Start') {
             steps {
                 // Set pending status at the beginning
-                sh """
+                sh '''
                     curl -s -X POST \
                     -H "Authorization: token ${GH_TOKEN}" \
                     -H "Accept: application/vnd.github.v3+json" \
-                    https://api.github.com/repos/${GITHUB_REPO}/statuses/${GIT_COMMIT} \
-                    -d '{"state":"pending","context":"Jenkins","description":"Build started","target_url":"${BUILD_URL}"}'
-                """
+                    https://api.github.com/repos/Dmaur/finalProject_Portfolio/statuses/${GIT_COMMIT} \
+                    -d '{"state":"pending","context":"'"${CONTEXT_NAME}"'","description":"Build started","target_url":"'"${BUILD_URL}"'"}'
+                '''
                 
                 echo "GitHub notified: Build started"
             }
@@ -87,26 +89,26 @@ pipeline {
     post {
         success {
             // Update GitHub status to success
-            sh """
+            sh '''
                 curl -s -X POST \
                 -H "Authorization: token ${GH_TOKEN}" \
                 -H "Accept: application/vnd.github.v3+json" \
-                https://api.github.com/repos/${GITHUB_REPO}/statuses/${GIT_COMMIT} \
-                -d '{"state":"success","context":"Jenkins","description":"Build succeeded","target_url":"${BUILD_URL}"}'
-            """
+                https://api.github.com/repos/Dmaur/finalProject_Portfolio/statuses/${GIT_COMMIT} \
+                -d '{"state":"success","context":"'"${CONTEXT_NAME}"'","description":"Build succeeded","target_url":"'"${BUILD_URL}"'"}'
+            '''
             
             echo "GitHub notified: Build succeeded"
         }
         
         failure {
             // Update GitHub status to failure
-            sh """
+            sh '''
                 curl -s -X POST \
                 -H "Authorization: token ${GH_TOKEN}" \
                 -H "Accept: application/vnd.github.v3+json" \
-                https://api.github.com/repos/${GITHUB_REPO}/statuses/${GIT_COMMIT} \
-                -d '{"state":"failure","context":"Jenkins","description":"Build failed","target_url":"${BUILD_URL}"}'
-            """
+                https://api.github.com/repos/Dmaur/finalProject_Portfolio/statuses/${GIT_COMMIT} \
+                -d '{"state":"failure","context":"'"${CONTEXT_NAME}"'","description":"Build failed","target_url":"'"${BUILD_URL}"'"}'
+            '''
             
             echo "GitHub notified: Build failed"
         }
