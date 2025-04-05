@@ -23,7 +23,7 @@ pipeline {
                 sh 'git log -1'
                 sh 'git branch'
                 
-                // Check GitHub token permissions without exposing the token
+                // Check GitHub token permissions 
                 sh '''
                     # Test GitHub token by making a simple API call
                     STATUS_CODE=$(curl -s -o /dev/null -w "%{http_code}" \\
