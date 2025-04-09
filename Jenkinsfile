@@ -64,13 +64,9 @@ pipeline {
                         curl -v -X POST \\
                         -H "Authorization: token ${GH_TOKEN}" \\
                         -H "Accept: application/vnd.github.v3+json" \\
+                        -H "Content-Type: application/json" \\
                         https://api.github.com/repos/${GITHUB_REPO}/statuses/${CURRENT_COMMIT} \\
-                        -d '{
-                            "state": "pending",
-                            "context": "${CONTEXT_NAME}",
-                            "description": "Build in progress...",
-                            "target_url": "${BUILD_URL}"
-                        }'
+                        -d '{"state": "pending", "context": "${CONTEXT_NAME}", "description": "Build in progress...", "target_url": "${BUILD_URL}"}'
                     """
                     
                     def response = sh(script: statusCmd, returnStdout: true).trim()
@@ -104,14 +100,23 @@ pipeline {
                 
                 stage('Setup Environment') {
                     steps {
-                        sh '''
-                            echo "MONGO_URL=${MONGO_URL}" > .env
-                            echo "MONGO_DB_NAME=${MONGO_DB_NAME}" >> .env
-                            echo "MONGO_COLLECTION_PROJECTS=${MONGO_COLLECTION_PROJECTS}" >> .env
-                            
-                            # Copy to .env.local for Next.js
-                            cp .env .env.local
-                        '''
+                         // Create .env file without echoing credentials
+                        withCredentials([string(credentialsId: 'MONGODB_URI', variable: 'MONGODB_URI')]) {
+                            sh '''
+                                # Write to .env file without echoing to console
+                                cat > .env << EOL
+MONGO_URL=${MONGODB_URI}
+MONGO_DB_NAME=${MONGO_DB_NAME}
+MONGO_COLLECTION_PROJECTS=${MONGO_COLLECTION_PROJECTS}
+EOL
+                
+                                # Copy to .env.local for Next.js
+                                cp .env .env.local
+                
+                                # Confirm files were created without showing contents
+                                echo "Environment files created successfully"
+                            '''
+                        }
                     }
                 }
             }
@@ -160,22 +165,49 @@ pipeline {
                 }
             }
         }
+        
+        // Added Report Success stage
+        stage('Report Success') {
+            steps {
+                script {
+                    def statusCmd = """
+                        curl -v -X POST \\
+                        -H "Authorization: token ${GH_TOKEN}" \\
+                        -H "Accept: application/vnd.github.v3+json" \\
+                        -H "Content-Type: application/json" \\
+                        https://api.github.com/repos/${GITHUB_REPO}/statuses/${CURRENT_COMMIT} \\
+                        -d '{"state": "success", "context": "${CONTEXT_NAME}", "description": "Build succeeded", "target_url": "${BUILD_URL}"}'
+                    """
+                    
+                    sh(script: statusCmd)
+                    
+                    // Verify the status was set
+                    sh """
+                        echo "Verifying status update:"
+                        curl -s \\
+                        -H "Authorization: token ${GH_TOKEN}" \\
+                        -H "Accept: application/vnd.github.v3+json" \\
+                        https://api.github.com/repos/${GITHUB_REPO}/statuses/${CURRENT_COMMIT} | grep -E '"context"|"state"'
+                    """
+                }
+                echo "GitHub notified: Build succeeded"
+            }
+        }
     }
     
     post {
         success {
             script {
+                // Small delay to ensure previous status updates have been processed
+                sh "sleep 2"
+                
                 def statusCmd = """
                     curl -X POST \\
                     -H "Authorization: token ${GH_TOKEN}" \\
                     -H "Accept: application/vnd.github.v3+json" \\
+                    -H "Content-Type: application/json" \\
                     https://api.github.com/repos/${GITHUB_REPO}/statuses/${CURRENT_COMMIT} \\
-                    -d '{
-                        "state": "success",
-                        "context": "${CONTEXT_NAME}",
-                        "description": "Build succeeded",
-                        "target_url": "${BUILD_URL}"
-                    }'
+                    -d '{"state": "success", "context": "${CONTEXT_NAME}", "description": "Build succeeded (post)", "target_url": "${BUILD_URL}"}'
                 """
                 
                 sh(script: statusCmd)
@@ -189,13 +221,9 @@ pipeline {
                     curl -X POST \\
                     -H "Authorization: token ${GH_TOKEN}" \\
                     -H "Accept: application/vnd.github.v3+json" \\
+                    -H "Content-Type: application/json" \\
                     https://api.github.com/repos/${GITHUB_REPO}/statuses/${CURRENT_COMMIT} \\
-                    -d '{
-                        "state": "failure",
-                        "context": "${CONTEXT_NAME}",
-                        "description": "Build failed",
-                        "target_url": "${BUILD_URL}"
-                    }'
+                    -d '{"state": "failure", "context": "${CONTEXT_NAME}", "description": "Build failed", "target_url": "${BUILD_URL}"}'
                 """
                 
                 sh(script: statusCmd)
