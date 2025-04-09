@@ -9,7 +9,7 @@ export default async function Home() {
   
   return (
     <>
-    
+      visible change
       <Landing projects={projects}/>
       
 
