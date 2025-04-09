@@ -104,14 +104,24 @@ pipeline {
                 
                 stage('Setup Environment') {
                     steps {
-                        sh '''
-                            echo "MONGO_URL=${MONGO_URL}" > .env
-                            echo "MONGO_DB_NAME=${MONGO_DB_NAME}" >> .env
-                            echo "MONGO_COLLECTION_PROJECTS=${MONGO_COLLECTION_PROJECTS}" >> .env
-                            
+                         // Create .env file without echoing credentials
+                        withCredentials([string(credentialsId: 'MONGODB_URI', variable: 'MONGODB_URI')]) {
+                            sh '''
+                                # Write to .env file without echoing to console
+                                cat > .env << EOL
+                                    MONGO_URL=${MONGODB_URI}
+                                    MONGO_DB_NAME=${MONGO_DB_NAME}
+                                    MONGO_COLLECTION_PROJECTS=${MONGO_COLLECTION_PROJECTS}
+                                EOL
+                
                             # Copy to .env.local for Next.js
                             cp .env .env.local
+                
+                            # Confirm files were created without showing contents
+                            echo "Environment files created successfully"
                         '''
+                            }
+                        }
                     }
                 }
             }
