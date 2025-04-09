@@ -1,6 +1,11 @@
 pipeline {
     agent any
     
+    options {
+        timeout(time: 30, unit: 'MINUTES')
+        disableConcurrentBuilds()
+    }
+    
     tools {
         nodejs 'NodeJS'
     }
@@ -9,6 +14,9 @@ pipeline {
         GH_TOKEN = credentials('github-status-token')
         GITHUB_REPO = "Dmaur/finalProject_Portfolio"
         CONTEXT_NAME = "jenkins-portfolio-check"
+        MONGO_URL = credentials('MONGODB_URI')
+        MONGO_DB_NAME = "dbProjects"
+        MONGO_COLLECTION_PROJECTS = "projects"
     }
     
     stages {
@@ -73,41 +81,64 @@ pipeline {
             }
         }
         
-        stage('Setup') {
-            steps {
-                sh 'node -v'
-                sh 'npm -v'
-            }
-        }
-        
         stage('Checkout') {
             steps {
                 checkout scm
             }
         }
         
-        stage('Install Dependencies') {
-            steps {
-                sh 'npm install'
+        stage('Setup & Dependencies') {
+            parallel {
+                stage('Node Setup') {
+                    steps {
+                        sh 'node -v'
+                        sh 'npm -v'
+                    }
+                }
+                
+                stage('Install Dependencies') {
+                    steps {
+                        sh 'npm ci'
+                    }
+                }
+                
+                stage('Setup Environment') {
+                    steps {
+                        sh '''
+                            echo "MONGO_URL=${MONGO_URL}" > .env
+                            echo "MONGO_DB_NAME=${MONGO_DB_NAME}" >> .env
+                            echo "MONGO_COLLECTION_PROJECTS=${MONGO_COLLECTION_PROJECTS}" >> .env
+                            
+                            # Copy to .env.local for Next.js
+                            cp .env .env.local
+                        '''
+                    }
+                }
             }
         }
         
-        stage('Lint') {
-            steps {
-                sh 'npm run lint || true'
-            }
-        }
-        
-        stage('Setup Environment') {
-            steps {
-                sh '''
-                    echo "MONGO_URL=mongodb+srv://derrickmaurais1:JXQ67MN8VRi10Hvu@portfoliositedb.hweqv.mongodb.net/?retryWrites=true&w=majority&appName=portfolioSiteDB" > .env
-                    echo "MONGO_DB_NAME=dbProjects" >> .env
-                    echo "MONGO_COLLECTION_PROJECTS=projects" >> .env
-                    
-                    # Copy to .env.local for Next.js
-                    cp .env .env.local
-                '''
+        stage('Code Quality') {
+            parallel {
+                stage('Lint') {
+                    steps {
+                        catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
+                            sh 'npm run lint'
+                        }
+                    }
+                }
+                
+                stage('Tests') {
+                    steps {
+                        catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
+                            sh 'npm test'
+                        }
+                    }
+                    post {
+                        always {
+                            junit allowEmptyResults: true, testResults: 'junit-reports/*.xml'
+                        }
+                    }
+                }
             }
         }
         
@@ -117,43 +148,16 @@ pipeline {
             }
         }
         
-        stage('Quality Gate Passed') {
-            steps {
-                sh 'echo "All quality checks have passed! Vercel can safely deploy."'
-            }
-        }
-        
-        stage('Report Success') {
+        stage('Quality Gate') {
             steps {
                 script {
-                    // Update GitHub status to success with better error handling
-                    def statusCmd = """
-                        curl -v -X POST \\
-                        -H "Authorization: token ${GH_TOKEN}" \\
-                        -H "Accept: application/vnd.github.v3+json" \\
-                        https://api.github.com/repos/${GITHUB_REPO}/statuses/${CURRENT_COMMIT} \\
-                        -d '{
-                            "state": "success",
-                            "context": "${CONTEXT_NAME}",
-                            "description": "Build succeeded",
-                            "target_url": "${BUILD_URL}"
-                        }'
-                    """
-                    
-                    def response = sh(script: statusCmd, returnStdout: true).trim()
-                    echo "GitHub API response: ${response}"
-                    
-                    // Double-check current status
-                    sh """
-                        echo "Verifying status update:"
-                        curl -s \\
-                        -H "Authorization: token ${GH_TOKEN}" \\
-                        -H "Accept: application/vnd.github.v3+json" \\
-                        https://api.github.com/repos/${GITHUB_REPO}/statuses/${CURRENT_COMMIT} | grep -E '"context"|"state"'
-                    """
+                    // Check if previous stages have failed
+                    if (currentBuild.result == 'UNSTABLE') {
+                        error "Quality checks failed. See previous stage logs for details."
+                    } else {
+                        echo "All quality checks have passed! Vercel can safely deploy."
+                    }
                 }
-                
-                echo "GitHub notified: Build succeeded"
             }
         }
     }
@@ -161,29 +165,28 @@ pipeline {
     post {
         success {
             script {
-                // Double-check success notification
                 def statusCmd = """
-                    curl -v -X POST \\
+                    curl -X POST \\
                     -H "Authorization: token ${GH_TOKEN}" \\
                     -H "Accept: application/vnd.github.v3+json" \\
                     https://api.github.com/repos/${GITHUB_REPO}/statuses/${CURRENT_COMMIT} \\
                     -d '{
                         "state": "success",
                         "context": "${CONTEXT_NAME}",
-                        "description": "Build succeeded (post)",
+                        "description": "Build succeeded",
                         "target_url": "${BUILD_URL}"
                     }'
                 """
                 
-                def response = sh(script: statusCmd, returnStdout: true).trim()
-                echo "GitHub API post-success response: ${response}"
+                sh(script: statusCmd)
+                echo "GitHub notified: Build succeeded"
             }
         }
         
         failure {
             script {
                 def statusCmd = """
-                    curl -v -X POST \\
+                    curl -X POST \\
                     -H "Authorization: token ${GH_TOKEN}" \\
                     -H "Accept: application/vnd.github.v3+json" \\
                     https://api.github.com/repos/${GITHUB_REPO}/statuses/${CURRENT_COMMIT} \\
@@ -195,8 +198,8 @@ pipeline {
                     }'
                 """
                 
-                def response = sh(script: statusCmd, returnStdout: true).trim()
-                echo "GitHub API failure response: ${response}"
+                sh(script: statusCmd)
+                echo "GitHub API failure response sent"
             }
         }
         
