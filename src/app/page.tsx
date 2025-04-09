@@ -9,7 +9,6 @@ export default async function Home() {
   
   return (
     <>
-    still making sure
     
       <Landing projects={projects}/>
       
@@ -18,4 +17,3 @@ export default async function Home() {
     </>
   );
 }
-
