@@ -17,39 +17,42 @@ pipeline {
         MONGO_URL = credentials('MONGODB_URI')
         MONGO_DB_NAME = "dbProjects"
         MONGO_COLLECTION_PROJECTS = "projects"
+        
     }
     
     stages {
-        stage('Debug') {
-            steps {
-                // Print build information for debugging
-                sh 'echo "Jenkins job: ${JOB_NAME} #${BUILD_NUMBER}"'
-                sh 'echo "Branch: ${BRANCH_NAME}"'
-                sh 'echo "GIT_COMMIT: ${GIT_COMMIT}"'
+
+        //********************* Uncomment for debugging info *********************
+        // stage('Debug') {
+        //     steps {
+        //         // Print build information for debugging
+        //         sh 'echo "Jenkins job: ${JOB_NAME} #${BUILD_NUMBER}"'
+        //         sh 'echo "Branch: ${BRANCH_NAME}"'
+        //         sh 'echo "GIT_COMMIT: ${GIT_COMMIT}"'
                 
-                // Get more git information
-                sh 'git log -1'
-                sh 'git branch'
+        //         // Get git information fort last commit
+        //         sh 'git log -1'
+        //         sh 'git branch'
                 
-                // Check GitHub token permissions 
-                sh '''
-                    # Test GitHub token by making a simple API call
-                    STATUS_CODE=$(curl -s -o /dev/null -w "%{http_code}" \\
-                    -H "Authorization: token ${GH_TOKEN}" \\
-                    -H "Accept: application/vnd.github.v3+json" \\
-                    https://api.github.com/rate_limit)
+        //         // Check GitHub token permissions 
+        //         sh '''
+        //             # Test GitHub token by making a simple API call
+        //             STATUS_CODE=$(curl -s -o /dev/null -w "%{http_code}" \\
+        //             -H "Authorization: token ${GH_TOKEN}" \\
+        //             -H "Accept: application/vnd.github.v3+json" \\
+        //             https://api.github.com/rate_limit)
                     
-                    echo "GitHub API test status code: ${STATUS_CODE}"
+        //             echo "GitHub API test status code: ${STATUS_CODE}"
                     
-                    # Get current statuses for this commit
-                    echo "Current GitHub statuses for this commit:"
-                    curl -s \\
-                    -H "Authorization: token ${GH_TOKEN}" \\
-                    -H "Accept: application/vnd.github.v3+json" \\
-                    https://api.github.com/repos/${GITHUB_REPO}/statuses/${GIT_COMMIT} | grep -E '"context"|"state"'
-                '''
-            }
-        }
+        //             # Get current statuses for this commit
+        //             echo "Current GitHub statuses for this commit:"
+        //             curl -s \\
+        //             -H "Authorization: token ${GH_TOKEN}" \\
+        //             -H "Accept: application/vnd.github.v3+json" \\
+        //             https://api.github.com/repos/${GITHUB_REPO}/statuses/${GIT_COMMIT} | grep -E '"context"|"state"'
+        //         '''
+        //     }
+        // }
         
         stage('Notify Start') {
             steps {
@@ -59,7 +62,7 @@ pipeline {
                     env.CURRENT_COMMIT = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
                     echo "Current commit SHA: ${CURRENT_COMMIT}"
                     
-                    // Set pending status with better error handling
+                    // Set pending status with error handling
                     def statusCmd = """
                         curl -v -X POST \\
                         -H "Authorization: token ${GH_TOKEN}" \\
@@ -100,20 +103,20 @@ pipeline {
                 
                 stage('Setup Environment') {
                     steps {
-                         // Create .env file without echoing credentials
+                         // Create .env file
                         withCredentials([string(credentialsId: 'MONGODB_URI', variable: 'MONGODB_URI')]) {
                             sh '''
                                 # Write to .env file without echoing to console
                                 cat > .env << EOL
-MONGO_URL=${MONGODB_URI}
-MONGO_DB_NAME=${MONGO_DB_NAME}
-MONGO_COLLECTION_PROJECTS=${MONGO_COLLECTION_PROJECTS}
-EOL
+                                    MONGO_URL=${MONGODB_URI}
+                                    MONGO_DB_NAME=${MONGO_DB_NAME}
+                                    MONGO_COLLECTION_PROJECTS=${MONGO_COLLECTION_PROJECTS}
+                                    EOL
                 
                                 # Copy to .env.local for Next.js
                                 cp .env .env.local
                 
-                                # Confirm files were created without showing contents
+                                # Confirm files were created 
                                 echo "Environment files created successfully"
                             '''
                         }
@@ -166,7 +169,7 @@ EOL
             }
         }
         
-        // Added Report Success stage
+   
         stage('Report Success') {
             steps {
                 script {
